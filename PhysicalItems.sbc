@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<Definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+    <PhysicalItems>
+
+        <!-- Gas -->
+        <PhysicalItem>
+            <Id>
+                <TypeId>Ingot</TypeId>
+                <SubtypeId>Oxygen</SubtypeId>
+            </Id>
+            <DisplayName>DisplayName_Item_Gas: Oxygen</DisplayName>
+            <Icon>Textures\GUI\Icons\ore_H2O_ice.dds</Icon>
+            <Size>
+                <X>0.01</X>
+                <Y>0.01</Y>
+                <Z>0.01</Z>
+            </Size>
+            <Mass>0</Mass>
+            <Volume>0</Volume>
+            <Model>Models\Components\Sphere.mwm</Model>
+            <PhysicalMaterial>Gas</PhysicalMaterial>
+            <Public>false</Public>
+            <CanPlayerOrder>false</CanPlayerOrder>
+        </PhysicalItem>
+
+        <PhysicalItem>
+            <Id>
+                <TypeId>Ingot</TypeId>
+                <SubtypeId>Hydrogen</SubtypeId>
+            </Id>
+            <DisplayName>DisplayName_Item_Gas: Hydrogen</DisplayName>
+            <Icon>Textures\GUI\Icons\ore_H2O_ice.dds</Icon>
+            <Size>
+                <X>0.01</X>
+                <Y>0.01</Y>
+                <Z>0.01</Z>
+            </Size>
+            <Mass>0</Mass>
+            <Volume>0</Volume>
+            <Model>Models\Components\Sphere.mwm</Model>
+            <PhysicalMaterial>Gas</PhysicalMaterial>
+            <Public>false</Public>
+            <CanPlayerOrder>false</CanPlayerOrder>
+        </PhysicalItem>
+
+    </PhysicalItems>
+</Definitions>
