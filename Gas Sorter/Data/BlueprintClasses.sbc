@@ -10,7 +10,6 @@
 			</Id>
 			<DisplayName>DisplayName_BlueprintClass_GasControl</DisplayName>
 			<Description>Description_BlueprintClass_GasControl</Description>
-			<Icon>Textures\GUI\Icons\buttons\large_grid.dds</Icon>
 			<HighlightIcon></HighlightIcon>
 			<FocusIcon></FocusIcon>
 			<InputConstraintIcon></InputConstraintIcon>
