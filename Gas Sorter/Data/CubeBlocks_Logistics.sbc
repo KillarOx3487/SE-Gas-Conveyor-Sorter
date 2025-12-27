@@ -6,7 +6,7 @@
                 <TypeId>ConveyorSorter</TypeId>
                 <SubtypeId>LargeBlockConveyorSorter</SubtypeId>
             </Id>
-            <DisplayName>TESTING</DisplayName>
+            <DisplayName>DisplayName_Block_ConveyorSorter</DisplayName>
             <Icon>Textures\GUI\Icons\Cubes\ConveyorSorterLarge.dds</Icon>
             <Description>Description_ConveyorSorter</Description>
             <CubeSize>Large</CubeSize>

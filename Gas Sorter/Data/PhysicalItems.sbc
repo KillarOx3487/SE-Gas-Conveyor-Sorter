@@ -8,8 +8,7 @@
                 <TypeId>Ingot</TypeId>
                 <SubtypeId>Oxygen</SubtypeId>
             </Id>
-            <DisplayName>DisplayName_Item_Gas: Oxygen</DisplayName>
-            <Icon>Textures\GUI\Icons\ore_H2O_ice.dds</Icon>
+            <DisplayName>Gas: Oxygen</DisplayName>
             <Size>
                 <X>0.01</X>
                 <Y>0.01</Y>
@@ -19,7 +18,6 @@
             <Volume>0</Volume>
             <Model>Models\Components\Sphere.mwm</Model>
             <PhysicalMaterial>Gas</PhysicalMaterial>
-            <Public>false</Public>
             <CanPlayerOrder>false</CanPlayerOrder>
         </PhysicalItem>
 
@@ -28,8 +26,7 @@
                 <TypeId>Ingot</TypeId>
                 <SubtypeId>Hydrogen</SubtypeId>
             </Id>
-            <DisplayName>DisplayName_Item_Gas: Hydrogen</DisplayName>
-            <Icon>Textures\GUI\Icons\ore_H2O_ice.dds</Icon>
+            <DisplayName>Gas: Hydrogen</DisplayName>
             <Size>
                 <X>0.01</X>
                 <Y>0.01</Y>
@@ -39,7 +36,6 @@
             <Volume>0</Volume>
             <Model>Models\Components\Sphere.mwm</Model>
             <PhysicalMaterial>Gas</PhysicalMaterial>
-            <Public>false</Public>
             <CanPlayerOrder>false</CanPlayerOrder>
         </PhysicalItem>
 
