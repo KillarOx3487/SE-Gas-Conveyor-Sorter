@@ -16,7 +16,7 @@ namespace GasSorter
         /// <summary>
         /// Called from GasSorterSession every N ticks.
         /// Scans for active gas-control sorters, identifies blocks on each side,
-        /// applies basic gas transfer, and logs what it sees.
+        /// and logs what it sees. DOES NOT TOUCH GAS.
         /// </summary>
         public static void RunGasControlScan(int logicTick)
         {
@@ -55,13 +55,13 @@ namespace GasSorter
                         if (!GasSorterSession.GetGasControlEnabled(sorter))
                             continue;
 
-                        // Only care about working, functional sorters
-                        if (!sorter.IsWorking || !sorter.IsFunctional)
+                        // Only care about functional sorters (we still don't touch gas)
+                        if (!sorter.IsFunctional)
                             continue;
 
                         activeSorters++;
 
-                        // For each active sorter, compute neighbors and handle gas + debug
+                        // For each active sorter, compute neighbors and print debug ONLY
                         DescribeSorterSides(grid, slim, sorter, logicTick);
                     }
                 }
@@ -82,7 +82,7 @@ namespace GasSorter
 
         /// <summary>
         /// For a given active sorter, finds what is on its "forward" and "backward" sides
-        /// in grid coordinates, applies basic gas transfer, then logs what it sees.
+        /// in grid coordinates, then logs what it sees (tanks or other). No gas manipulation.
         /// </summary>
         private static void DescribeSorterSides(
             IMyCubeGrid grid,
@@ -90,6 +90,10 @@ namespace GasSorter
             IMyConveyorSorter sorter,
             int logicTick)
         {
+            // If you want less spam, uncomment this throttle:
+            // if ((logicTick + (int)(sorter.EntityId & 0xFF)) % (60 * 5) != 0)
+            //     return;
+
             Vector3I sorterPos = slimSorter.Position;
             var orientation = sorter.Orientation; // MyBlockOrientation
 
@@ -107,10 +111,6 @@ namespace GasSorter
             IMySlimBlock forwardSlim = grid.GetCubeBlock(forwardPos);
             IMySlimBlock backwardSlim = grid.GetCubeBlock(backwardPos);
 
-            // Apply our basic gas rules (only on server)
-            HandleGasTransfer(sorter, forwardSlim, backwardSlim);
-
-            // Debug output so we can see what's on each side
             string gridName = grid.DisplayName ?? grid.Name ?? "Unnamed Grid";
             string sorterName = sorter.CustomName;
             if (string.IsNullOrWhiteSpace(sorterName))
@@ -150,57 +150,6 @@ namespace GasSorter
                 return name;
 
             return "other";
-        }
-
-        /// <summary>
-        /// Basic phase-1 gas transfer:
-        /// - If exactly one side is a tank, move a small amount per tick
-        ///   in the arrow direction.
-        /// - If both or neither sides are tanks, do nothing (for now).
-        /// </summary>
-        private static void HandleGasTransfer(IMyConveyorSorter sorter, IMySlimBlock forward, IMySlimBlock backward)
-        {
-            // Only the server should change game state
-            if (MyAPIGateway.Multiplayer != null && !MyAPIGateway.Multiplayer.IsServer)
-                return;
-
-            var tankFwd = (forward != null) ? forward.FatBlock as Sandbox.ModAPI.IMyGasTank : null;
-            var tankBack = (backward != null) ? backward.FatBlock as Sandbox.ModAPI.IMyGasTank : null;
-
-            // Case 1: tank on forward side, NOT tank on back => push tank -> system
-            if (tankFwd != null && tankBack == null)
-            {
-                double amt = 0.0005; // VERY small per tick for testing
-                double current = tankFwd.FilledRatio;
-
-                if (current > amt)
-                {
-                    tankFwd.ChangeFilledRatio(-amt, true);
-                    MyAPIGateway.Utilities.ShowMessage(
-                        "GasSorter",
-                        $"Drain {tankFwd.CustomName}: -{amt:F4}");
-                }
-                return;
-            }
-
-            // Case 2: tank on backward side, NOT tank on forward => pull system -> tank
-            if (tankBack != null && tankFwd == null)
-            {
-                double amt = 0.0005;
-                double current = tankBack.FilledRatio;
-
-                if (current < 0.999) // space to add
-                {
-                    tankBack.ChangeFilledRatio(amt, true);
-                    MyAPIGateway.Utilities.ShowMessage(
-                        "GasSorter",
-                        $"Fill {tankBack.CustomName}: +{amt:F4}");
-                }
-                return;
-            }
-
-            // Case 3+: other configurations ignored for now
-            // (two tanks, zero tanks; we leave untouched in phase 1)
         }
     }
 }
