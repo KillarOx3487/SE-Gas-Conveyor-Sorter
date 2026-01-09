@@ -1,6 +1,5 @@
 using Sandbox.ModAPI;
 using Sandbox.ModAPI.Interfaces.Terminal;
-using Sandbox.ModAPI.Ingame; // for MyInventoryItemFilter and sorter filter helpers
 using VRage.Game.Components;
 using VRage.Game.ModAPI;
 using VRage.Utils;
@@ -78,7 +77,7 @@ namespace GasSorter
             _infoRefreshTick = 0;
 
             // Only do this if a terminal screen is open
-            if (MyAPIGateway.Gui.GetCurrentScreen() == null)
+            if (MyAPIGateway.Gui.GetCurrentScreen == null)
                 return;
 
             // Refresh info for all gas-sorters we hooked
@@ -217,7 +216,7 @@ namespace GasSorter
                 return GasFilterMode.None;
 
             // Get the current filter list
-            var filters = new List<MyInventoryItemFilter>();
+            var filters = new List<Sandbox.ModAPI.Ingame.MyInventoryItemFilter>();
             sorter.GetFilterList(filters);
 
             if (filters.Count == 0)
