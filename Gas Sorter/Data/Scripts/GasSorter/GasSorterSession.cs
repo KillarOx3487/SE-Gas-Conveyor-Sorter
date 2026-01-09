@@ -1,5 +1,6 @@
 using Sandbox.ModAPI;
 using Sandbox.ModAPI.Interfaces.Terminal;
+using Sandbox.ModAPI.Ingame; // for MyInventoryItemFilter and sorter filter helpers
 using VRage.Game.Components;
 using VRage.Game.ModAPI;
 using VRage.Utils;
@@ -8,11 +9,14 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 
+
 namespace GasSorter
 {
     [MySessionComponentDescriptor(MyUpdateOrder.BeforeSimulation)]
     public class GasSorterSession : MySessionComponentBase
     {
+        private int _infoRefreshTick = 0;
+
         // Unique key inside CustomData so we don't stomp other mods/users
         private const string CustomDataKey = "[GasSorter]GasControl=";
 
@@ -49,6 +53,7 @@ namespace GasSorter
             if (_logicTick % 30 == 0) // roughly every 0.5s at 60 FPS
             {
                 GasSorterGasLogic.RunGasControlScan(_logicTick);
+                UpdateLiveInfoRefresh();
             }
         }
 
@@ -60,6 +65,29 @@ namespace GasSorter
             }
 
             _infoHooked.Clear();
+        }
+
+        private void UpdateLiveInfoRefresh()
+        {
+            _infoRefreshTick++;
+
+            // Only refresh 2 times per second
+            if (_infoRefreshTick < 30)
+                return;
+
+            _infoRefreshTick = 0;
+
+            // Only do this if a terminal screen is open
+            if (MyAPIGateway.Gui.GetCurrentScreen() == null)
+                return;
+
+            // Refresh info for all gas-sorters we hooked
+            foreach (var id in _infoHooked)
+            {
+                var ent = MyAPIGateway.Entities.GetEntityById(id) as IMyTerminalBlock;
+                if (ent != null)
+                    ent.RefreshCustomInfo();
+            }
         }
 
         private void TerminalControlGetter(IMyTerminalBlock block, List<IMyTerminalControl> controls)
@@ -170,8 +198,59 @@ namespace GasSorter
             block.RefreshCustomInfo();
         }
 
-        // --- Custom info hook per block ---
+        private enum GasFilterMode
+        {
+            None,
+            OxygenOnly,
+            HydrogenOnly,
+            Both
+        }
 
+        /// <summary>
+        /// Look at the sorter's item filter list and infer which gases
+        /// (if any) it is meant to control, based on your fake gas items.
+        /// This does NOT change any behavior, it's just for info text.
+        /// </summary>
+        private static GasFilterMode GetGasFilterMode(IMyConveyorSorter sorter)
+        {
+            if (sorter == null)
+                return GasFilterMode.None;
+
+            // Get the current filter list
+            var filters = new List<MyInventoryItemFilter>();
+            sorter.GetFilterList(filters);
+
+            if (filters.Count == 0)
+                return GasFilterMode.None;
+
+            bool hasOxygen = false;
+            bool hasHydrogen = false;
+
+            foreach (var f in filters)
+            {
+                MyDefinitionId def = f.ItemId;
+                string subtype = def.SubtypeName;
+
+                if (string.IsNullOrEmpty(subtype))
+                    continue;
+
+                // These checks assume your fake ingots use names like
+                // "Oxygen Gas" and "Hydrogen Gas" (or at least contain
+                // "Oxygen" / "Hydrogen" in the subtype).
+                if (subtype.IndexOf("Oxygen", StringComparison.OrdinalIgnoreCase) >= 0)
+                    hasOxygen = true;
+
+                if (subtype.IndexOf("Hydrogen", StringComparison.OrdinalIgnoreCase) >= 0)
+                    hasHydrogen = true;
+            }
+
+            if (hasOxygen && hasHydrogen) return GasFilterMode.Both;
+            if (hasOxygen) return GasFilterMode.OxygenOnly;
+            if (hasHydrogen) return GasFilterMode.HydrogenOnly;
+            return GasFilterMode.None;
+        }
+
+        // --- Custom info hook per block ---
         private void Block_AppendingCustomInfo(IMyTerminalBlock block, StringBuilder sb)
         {
             var sorter = block as IMyConveyorSorter;
@@ -190,8 +269,29 @@ namespace GasSorter
             else
             {
                 sb.AppendLine("  Mode: Directional valve");
-                // Later we’ll add:
-                // sb.AppendLine("  Filter: Oxygen Only / Hydrogen Only / All Gases");
+                
+               // Show which gases this sorter is set up to handle,
+               // based on the fake gas items in its filter list.
+               var gasMode = GetGasFilterMode(sorter);
+               switch (gasMode)
+              {
+                  case GasFilterMode.OxygenOnly:
+                      sb.AppendLine("  Gas Filter: Oxygen only");
+                      break;
+
+                  case GasFilterMode.HydrogenOnly:
+                      sb.AppendLine("  Gas Filter: Hydrogen only");
+                      break;
+
+                  case GasFilterMode.Both:
+                      sb.AppendLine("  Gas Filter: Oxygen + Hydrogen");
+                      break;
+
+                  case GasFilterMode.None:
+                  default:
+                      sb.AppendLine("  Gas Filter: (none / items only)");
+                      break;
+              }
             }
         }
     }
