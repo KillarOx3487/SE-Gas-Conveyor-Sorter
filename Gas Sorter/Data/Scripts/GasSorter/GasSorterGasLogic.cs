@@ -7,16 +7,34 @@ using System.Collections.Generic;
 
 namespace GasSorter
 {
+    /// <summary>
+    /// Orchestrator: finds active gas-control sorters, identifies neighbors,
+    /// evaluates filter state, then dispatches to specific logic modules.
+    /// </summary>
     public static class GasSorterGasLogic
     {
-        // HashSet here because this SE API's GetEntities expects HashSet<IMyEntity>
+        // HashSet because this SE API's GetEntities expects HashSet<IMyEntity>
         private static readonly HashSet<IMyEntity> _entityBuffer = new HashSet<IMyEntity>();
         private static readonly List<IMySlimBlock> _slimBuffer = new List<IMySlimBlock>();
 
+        // Public enums so modules can share them without needing extra shared files
+        public enum GasFilterMode
+        {
+            None,
+            OxygenOnly,
+            HydrogenOnly,
+            Both
+        }
+
+        public enum TankGasType
+        {
+            Unknown,
+            Oxygen,
+            Hydrogen
+        }
+
         /// <summary>
         /// Called from GasSorterSession every N ticks.
-        /// Scans for active gas-control sorters, identifies blocks on each side,
-        /// and logs what it sees. DOES NOT TOUCH GAS.
         /// </summary>
         public static void RunGasControlScan(int logicTick)
         {
@@ -55,19 +73,19 @@ namespace GasSorter
                         if (!GasSorterSession.GetGasControlEnabled(sorter))
                             continue;
 
-                        // Only care about functional sorters (we still don't touch gas)
+                        // Respect functional state; modules can also check Enabled / IsWorking if needed
                         if (!sorter.IsFunctional)
                             continue;
 
                         activeSorters++;
 
-                        // For each active sorter, compute neighbors and print debug ONLY
-                        DescribeSorterSides(grid, slim, sorter, logicTick);
+                        // Compute neighbors and dispatch
+                        ProcessSorter(grid, slim, sorter, logicTick);
                     }
                 }
 
-                // Summary every ~5 seconds so you know it's alive
-                if (logicTick % (60 * 5) == 0) // about every 5 seconds
+                // Optional summary; keep if you still like seeing it.
+                if (logicTick % (60 * 5) == 0)
                 {
                     MyAPIGateway.Utilities.ShowMessage(
                         "GasSorter",
@@ -80,28 +98,15 @@ namespace GasSorter
             }
         }
 
-        /// <summary>
-        /// For a given active sorter, finds what is on its "forward" and "backward" sides
-        /// in grid coordinates, then logs what it sees (tanks or other). No gas manipulation.
-        /// </summary>
-        private static void DescribeSorterSides(
-            IMyCubeGrid grid,
-            IMySlimBlock slimSorter,
-            IMyConveyorSorter sorter,
-            int logicTick)
+        private static void ProcessSorter(IMyCubeGrid grid, IMySlimBlock slimSorter, IMyConveyorSorter sorter, int logicTick)
         {
-            // If you want less spam, uncomment this throttle:
-            // if ((logicTick + (int)(sorter.EntityId & 0xFF)) % (60 * 5) != 0)
-            //     return;
-
+            // Determine forward/back positions using block orientation
             Vector3I sorterPos = slimSorter.Position;
-            var orientation = sorter.Orientation; // MyBlockOrientation
+            var orientation = sorter.Orientation;
 
-            // Forward direction vector (arrow direction)
             var forwardDir = orientation.Forward;
             Vector3I forwardOffset = Base6Directions.GetIntVector(forwardDir);
 
-            // Backward is just the flipped forward direction
             var backwardDir = Base6Directions.GetFlippedDirection(forwardDir);
             Vector3I backwardOffset = Base6Directions.GetIntVector(backwardDir);
 
@@ -111,23 +116,63 @@ namespace GasSorter
             IMySlimBlock forwardSlim = grid.GetCubeBlock(forwardPos);
             IMySlimBlock backwardSlim = grid.GetCubeBlock(backwardPos);
 
-            string gridName = grid.DisplayName ?? grid.Name ?? "Unnamed Grid";
-            string sorterName = sorter.CustomName;
-            if (string.IsNullOrWhiteSpace(sorterName))
-                sorterName = sorter.DefinitionDisplayNameText;
+            // Compute filter mode once here, pass to modules
+            GasFilterMode filterMode = GetSorterGasFilterMode(sorter);
 
-            string forwardDesc = DescribeNeighborBlock(forwardSlim);
-            string backwardDesc = DescribeNeighborBlock(backwardSlim);
+            // MODULE DISPATCH:
+            // Tank behavior (safe, stable)
+            GasSorterTanksLogic.Apply(sorter, forwardSlim, backwardSlim, filterMode);
 
-            MyAPIGateway.Utilities.ShowMessage(
-                "GasSorter",
-                $"Sorter '{sorterName}' on grid '{gridName}': Fwd={forwardDesc}, Back={backwardDesc}");
+            // Future modules go here, without touching tank code:
+            // GasSorterGasGenLogic.Apply(sorter, forwardSlim, backwardSlim, filterMode);
+            // GasSorterThrusterLogic.Apply(...);
+
+            // Optional per-sorter debug (throttle if needed)
+            // Uncomment if you want occasional neighbor prints:
+            /*
+            if ((logicTick + (int)(sorter.EntityId & 0xFF)) % (60 * 5) == 0)
+            {
+                string sorterName = string.IsNullOrWhiteSpace(sorter.CustomName) ? sorter.DefinitionDisplayNameText : sorter.CustomName;
+                MyAPIGateway.Utilities.ShowMessage("GasSorter",
+                    $"Sorter '{sorterName}': Fwd={DescribeNeighborBlock(forwardSlim)}, Back={DescribeNeighborBlock(backwardSlim)} Filter={filterMode}");
+            }
+            */
         }
 
         /// <summary>
-        /// Returns a short description of what kind of block is on a given side.
-        /// For now we care about gas tanks and "none/other".
+        /// Reads the sorter's filter list and infers fake-gas selection.
+        /// No Sandbox.ModAPI.Ingame "using" required; we fully qualify the filter type.
         /// </summary>
+        public static GasFilterMode GetSorterGasFilterMode(IMyConveyorSorter sorter)
+        {
+            if (sorter == null)
+                return GasFilterMode.None;
+
+            var filters = new List<Sandbox.ModAPI.Ingame.MyInventoryItemFilter>();
+            sorter.GetFilterList(filters);
+
+            bool hasO = false;
+            bool hasH = false;
+
+            for (int i = 0; i < filters.Count; i++)
+            {
+                var def = filters[i].ItemId;
+                var subtype = def.SubtypeName;
+
+                if (string.IsNullOrEmpty(subtype))
+                    continue;
+
+                if (subtype.IndexOf("Oxygen", StringComparison.OrdinalIgnoreCase) >= 0) hasO = true;
+                if (subtype.IndexOf("Hydrogen", StringComparison.OrdinalIgnoreCase) >= 0) hasH = true;
+            }
+
+            if (hasO && hasH) return GasFilterMode.Both;
+            if (hasO) return GasFilterMode.OxygenOnly;
+            if (hasH) return GasFilterMode.HydrogenOnly;
+            return GasFilterMode.None;
+        }
+
+        // Optional utility if you ever want neighbor descriptions again
         private static string DescribeNeighborBlock(IMySlimBlock slim)
         {
             if (slim == null || slim.FatBlock == null)
@@ -135,12 +180,10 @@ namespace GasSorter
 
             var block = slim.FatBlock;
 
-            // We care about gas tanks explicitly
             if (block is Sandbox.ModAPI.IMyGasTank)
                 return "GasTank";
 
-            // Fallback: show subtype name if available
-            MyDefinitionId defId = block.BlockDefinition; // SerializableDefinitionId/MyDefinitionId
+            MyDefinitionId defId = block.BlockDefinition;
             string subtype = defId.SubtypeName;
             if (!string.IsNullOrWhiteSpace(subtype))
                 return subtype;
