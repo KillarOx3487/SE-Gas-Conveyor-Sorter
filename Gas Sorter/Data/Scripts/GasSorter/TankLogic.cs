@@ -1,6 +1,7 @@
 using Sandbox.ModAPI;
 using VRage.Game.ModAPI;
 using System;
+using System.Collections.Generic;
 using VRage.Game;
 
 namespace GasSorter
@@ -8,9 +9,17 @@ namespace GasSorter
     /// <summary>
     /// Tank module: stable tank-to-tank directional transfer only.
     /// Does NOT attempt to simulate whole gas network.
+    /// Adds "anti-bounce" detection so we don't fight generators/thrusters.
     /// </summary>
     public static class GasSorterTanksLogic
     {
+        // Track last seen FilledRatio per tank to detect active network activity
+        private static readonly Dictionary<long, double> _lastRatio = new Dictionary<long, double>();
+
+        // How much ratio change between scans counts as "active" (generator/thruster/etc. interacting)
+        // Your scan is every ~30 ticks, so this can be pretty small.
+        private const double ActiveDeltaThreshold = 0.0008;
+
         public static void Apply(
             IMyConveyorSorter sorter,
             IMySlimBlock forwardSlim,
@@ -21,23 +30,23 @@ namespace GasSorter
             if (MyAPIGateway.Multiplayer != null && !MyAPIGateway.Multiplayer.IsServer)
                 return;
 
-            // Respect sorter ON/OFF. (You specifically wanted OFF to behave vanilla.)
+            // Respect sorter ON/OFF
             if (!sorter.Enabled)
                 return;
 
-            // Optional: also require "working" (powered + functional)
+            // Require working (powered + functional)
             if (!sorter.IsWorking || !sorter.IsFunctional)
                 return;
 
             var tankFwd = (forwardSlim != null) ? forwardSlim.FatBlock as Sandbox.ModAPI.IMyGasTank : null;
             var tankBack = (backwardSlim != null) ? backwardSlim.FatBlock as Sandbox.ModAPI.IMyGasTank : null;
 
-            // We only operate in the safe case: tank-to-tank
+            // Safe case only: tank-to-tank
             if (tankFwd == null || tankBack == null)
                 return;
 
-            // Respect fake gas filter selection by only operating on matching tank types.
-            // If filterMode is None or Both, we allow.
+            // Respect fake gas selection by only operating on matching tank types.
+            // If filterMode is None or Both, allow.
             if (filterMode != GasSorterGasLogic.GasFilterMode.None &&
                 filterMode != GasSorterGasLogic.GasFilterMode.Both)
             {
@@ -56,8 +65,12 @@ namespace GasSorter
                 }
             }
 
+            // Anti-bounce: if either tank is changing due to the vanilla gas sim, do nothing this scan.
+            // This prevents the generator/tank "ping pong" and negative-looking readouts.
+            if (IsTankActive(tankFwd) || IsTankActive(tankBack))
+                return;
+
             // Direction rule: Back -> Forward (sorter arrow direction)
-            // Transfer a tiny fill-ratio amount per call.
             const double amt = 0.0002; // tune later
 
             double backRatio = tankBack.FilledRatio;
@@ -79,13 +92,31 @@ namespace GasSorter
             tankBack.ChangeFilledRatio(-move, true);
             tankFwd.ChangeFilledRatio(move, true);
 
-            // Optional debug (commented out)
-            // MyAPIGateway.Utilities.ShowMessage("GasSorter", $"Tank->Tank move {move:F6} (Back -> Fwd)");
+            // Update last ratios after our own move so we don't flag ourselves as "active"
+            _lastRatio[tankFwd.EntityId] = tankFwd.FilledRatio;
+            _lastRatio[tankBack.EntityId] = tankBack.FilledRatio;
+        }
+
+        private static bool IsTankActive(Sandbox.ModAPI.IMyGasTank tank)
+        {
+            long id = tank.EntityId;
+            double current = tank.FilledRatio;
+
+            double last;
+            if (_lastRatio.TryGetValue(id, out last))
+            {
+                double delta = Math.Abs(current - last);
+                _lastRatio[id] = current;
+                return delta > ActiveDeltaThreshold;
+            }
+
+            // First time we see it: seed and treat as not active
+            _lastRatio[id] = current;
+            return false;
         }
 
         private static GasSorterGasLogic.TankGasType GetTankGasType(Sandbox.ModAPI.IMyGasTank tank)
         {
-            // Usually subtype contains Hydrogen/Oxygen
             MyDefinitionId id = tank.BlockDefinition;
             string subtype = id.SubtypeName;
 
@@ -98,7 +129,6 @@ namespace GasSorter
                     return GasSorterGasLogic.TankGasType.Oxygen;
             }
 
-            // Fallback to display name
             string dn = tank.DefinitionDisplayNameText;
             if (!string.IsNullOrEmpty(dn))
             {

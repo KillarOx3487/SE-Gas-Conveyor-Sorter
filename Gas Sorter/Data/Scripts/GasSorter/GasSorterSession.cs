@@ -40,6 +40,8 @@ namespace GasSorter
 
                 // Debug: show a message in chat so we know this component actually ran
                 MyAPIGateway.Utilities.ShowMessage("GasSorter", "GasSorterSession initialized");
+                
+                MyAPIGateway.Utilities.MessageEntered += OnMessageEntered;
 
                 MyAPIGateway.TerminalControls.CustomControlGetter += TerminalControlGetter;
             }
@@ -56,10 +58,66 @@ namespace GasSorter
             }
         }
 
+private void OnMessageEntered(string messageText, ref bool sendToOthers)
+{
+    if (string.IsNullOrWhiteSpace(messageText)) return;
+
+    // Only handle our commands
+    // Examples:
+    //  /gassorter debug on
+    //  /gassorter debug off
+    //  /gassorter debug
+    string msg = messageText.Trim();
+
+    if (!msg.StartsWith("/gassorter", StringComparison.OrdinalIgnoreCase))
+        return;
+
+    // Do not broadcast our command to chat
+    sendToOthers = false;
+
+    var parts = msg.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+    // parts[0] = /gassorter
+
+    if (parts.Length == 1)
+    {
+        MyAPIGateway.Utilities.ShowMessage("GasSorter", "Commands: /gassorter debug [on|off]");
+        return;
+    }
+
+    if (parts.Length >= 2 && parts[1].Equals("debug", StringComparison.OrdinalIgnoreCase))
+    {
+        if (parts.Length == 2)
+        {
+            MyAPIGateway.Utilities.ShowMessage("GasSorter", $"Debug is {(DebugEnabled ? "ON" : "OFF")}. Use: /gassorter debug on|off");
+            return;
+        }
+
+        if (parts[2].Equals("on", StringComparison.OrdinalIgnoreCase))
+        {
+            DebugEnabled = true;
+            MyAPIGateway.Utilities.ShowMessage("GasSorter", "Debug ON");
+            return;
+        }
+
+        if (parts[2].Equals("off", StringComparison.OrdinalIgnoreCase))
+        {
+            DebugEnabled = false;
+            MyAPIGateway.Utilities.ShowMessage("GasSorter", "Debug OFF");
+            return;
+        }
+
+        MyAPIGateway.Utilities.ShowMessage("GasSorter", "Usage: /gassorter debug on|off");
+        return;
+    }
+
+    MyAPIGateway.Utilities.ShowMessage("GasSorter", "Unknown command. Try: /gassorter debug on|off");
+}
+
         protected override void UnloadData()
         {
             if (MyAPIGateway.TerminalControls != null)
             {
+                MyAPIGateway.Utilities.MessageEntered -= OnMessageEntered;
                 MyAPIGateway.TerminalControls.CustomControlGetter -= TerminalControlGetter;
             }
 
@@ -134,9 +192,10 @@ namespace GasSorter
 
             MyAPIGateway.TerminalControls.AddControl<IMyConveyorSorter>(checkbox);
         }
+        // --- Debug Switch --- 
+        public static bool DebugEnabled { get; private set; } = false;
 
         // --- CustomData helpers for persistence ---
-
         public static bool GetGasControlEnabled(IMyTerminalBlock block)
         {
             if (block == null)

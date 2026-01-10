@@ -1,6 +1,7 @@
 using Sandbox.ModAPI;
 using VRage.Game;
 using VRage.Game.ModAPI;
+using VRage.ModAPI;
 using VRageMath;
 using System;
 using System.Collections.Generic;
@@ -13,24 +14,29 @@ namespace GasSorter
     /// </summary>
     public static class GasSorterGasLogic
     {
-        // HashSet because this SE API's GetEntities expects HashSet<IMyEntity>
+        // HashSet because SE API's GetEntities expects HashSet
         private static readonly HashSet<IMyEntity> _entityBuffer = new HashSet<IMyEntity>();
         private static readonly List<IMySlimBlock> _slimBuffer = new List<IMySlimBlock>();
 
         // Public enums so modules can share them without needing extra shared files
-        public enum GasFilterMode
-        {
-            None,
-            OxygenOnly,
-            HydrogenOnly,
-            Both
-        }
+        public enum GasFilterMode { None, OxygenOnly, HydrogenOnly, Both }
+        public enum TankGasType { Unknown, Oxygen, Hydrogen }
 
-        public enum TankGasType
+        // ---- MODULE REGISTRY ----
+        // Fixed order list of modules. Add new modules here without touching existing ones.
+        private static readonly List<IGasSorterModule> _modules = new List<IGasSorterModule>();
+
+        // Static constructor runs once
+        static GasSorterGasLogic()
         {
-            Unknown,
-            Oxygen,
-            Hydrogen
+            // Baseline: stable tank-to-tank behavior first
+            _modules.Add(new GasSorterTanksModule());
+            _modules.Add(new GasSorterDebugModule());
+
+
+            // Future modules go here:
+            // _modules.Add(new GasSorterGasGenModule());
+            // _modules.Add(new GasSorterThrusterModule());
         }
 
         /// <summary>
@@ -40,8 +46,7 @@ namespace GasSorter
         {
             try
             {
-                if (MyAPIGateway.Entities == null)
-                    return;
+                if (MyAPIGateway.Entities == null) return;
 
                 _entityBuffer.Clear();
                 MyAPIGateway.Entities.GetEntities(_entityBuffer, e => e is IMyCubeGrid);
@@ -53,29 +58,26 @@ namespace GasSorter
                 foreach (var ent in _entityBuffer)
                 {
                     var grid = ent as IMyCubeGrid;
-                    if (grid == null)
-                        continue;
+                    if (grid == null) continue;
 
                     totalGrids++;
 
                     _slimBuffer.Clear();
                     grid.GetBlocks(_slimBuffer, slim => slim != null && slim.FatBlock is IMyConveyorSorter);
 
-                    foreach (var slim in _slimBuffer)
+                    for (int i = 0; i < _slimBuffer.Count; i++)
                     {
+                        var slim = _slimBuffer[i];
                         var sorter = slim.FatBlock as IMyConveyorSorter;
-                        if (sorter == null)
-                            continue;
+                        if (sorter == null) continue;
 
                         totalSorters++;
 
                         // Only care about sorters with Gas Control enabled
-                        if (!GasSorterSession.GetGasControlEnabled(sorter))
-                            continue;
+                        if (!GasSorterSession.GetGasControlEnabled(sorter)) continue;
 
                         // Respect functional state; modules can also check Enabled / IsWorking if needed
-                        if (!sorter.IsFunctional)
-                            continue;
+                        if (!sorter.IsFunctional) continue;
 
                         activeSorters++;
 
@@ -84,13 +86,21 @@ namespace GasSorter
                     }
                 }
 
-                // Optional summary; keep if you still like seeing it.
-                if (logicTick % (60 * 5) == 0)
+                // Optional periodic summary (kept from your current file)
+                /*if (logicTick % (60 * 5) == 0)
                 {
                     MyAPIGateway.Utilities.ShowMessage(
                         "GasSorter",
-                        $"Scan: grids={totalGrids}, sorters={totalSorters}, activeGasSorters={activeSorters}");
+                        $"Scan: grids={totalGrids}, sorters={totalSorters}, activeGasSorters={activeSorters}"
+                    );
+                }*/
+                
+                catch (Exception e)
+                {
+                    if (GasSorterSession.DebugEnabled)
+                        MyAPIGateway.Utilities.ShowMessage("GasSorterDbg", $"Module '{module.Name}' error: {e.Message}");
                 }
+
             }
             catch (Exception e)
             {
@@ -102,8 +112,8 @@ namespace GasSorter
         {
             // Determine forward/back positions using block orientation
             Vector3I sorterPos = slimSorter.Position;
-            var orientation = sorter.Orientation;
 
+            var orientation = sorter.Orientation;
             var forwardDir = orientation.Forward;
             Vector3I forwardOffset = Base6Directions.GetIntVector(forwardDir);
 
@@ -119,34 +129,60 @@ namespace GasSorter
             // Compute filter mode once here, pass to modules
             GasFilterMode filterMode = GetSorterGasFilterMode(sorter);
 
-            // MODULE DISPATCH:
-            // Tank behavior (safe, stable)
-            GasSorterTanksLogic.Apply(sorter, forwardSlim, backwardSlim, filterMode);
+            // Build context once
+            GasSorterModuleContext ctx = new GasSorterModuleContext
+            {
+                Sorter = sorter,
+                Grid = grid,
+                SorterSlim = slimSorter,
+                ForwardSlim = forwardSlim,
+                BackwardSlim = backwardSlim,
+                FilterMode = filterMode,
+                LogicTick = logicTick
+            };
 
-            // Future modules go here, without touching tank code:
-            // GasSorterGasGenLogic.Apply(sorter, forwardSlim, backwardSlim, filterMode);
-            // GasSorterThrusterLogic.Apply(...);
+            // MODULE DISPATCH:
+            for (int m = 0; m < _modules.Count; m++)
+            {
+                var module = _modules[m];
+                if (module == null || !module.Enabled) continue;
+
+                int interval = module.TickInterval;
+                if (interval > 0 && (logicTick % interval) != 0) continue;
+
+                try
+                {
+                    module.Apply(ref ctx);
+                }
+                catch (Exception e)
+                {
+                    // Module-local failure should never kill the whole scan.
+                    MyAPIGateway.Utilities.ShowMessage("GasSorter", $"Module '{module.Name}' error: {e.Message}");
+                }
+            }
 
             // Optional per-sorter debug (throttle if needed)
-            // Uncomment if you want occasional neighbor prints:
             /*
             if ((logicTick + (int)(sorter.EntityId & 0xFF)) % (60 * 5) == 0)
             {
-                string sorterName = string.IsNullOrWhiteSpace(sorter.CustomName) ? sorter.DefinitionDisplayNameText : sorter.CustomName;
-                MyAPIGateway.Utilities.ShowMessage("GasSorter",
-                    $"Sorter '{sorterName}': Fwd={DescribeNeighborBlock(forwardSlim)}, Back={DescribeNeighborBlock(backwardSlim)} Filter={filterMode}");
+                string sorterName = string.IsNullOrWhiteSpace(sorter.CustomName)
+                    ? sorter.DefinitionDisplayNameText
+                    : sorter.CustomName;
+
+                MyAPIGateway.Utilities.ShowMessage(
+                    "GasSorter",
+                    $"Sorter '{sorterName}': Fwd={DescribeNeighborBlock(forwardSlim)}, Back={DescribeNeighborBlock(backwardSlim)} Filter={filterMode}"
+                );
             }
             */
         }
 
         /// <summary>
         /// Reads the sorter's filter list and infers fake-gas selection.
-        /// No Sandbox.ModAPI.Ingame "using" required; we fully qualify the filter type.
         /// </summary>
         public static GasFilterMode GetSorterGasFilterMode(IMyConveyorSorter sorter)
         {
-            if (sorter == null)
-                return GasFilterMode.None;
+            if (sorter == null) return GasFilterMode.None;
 
             var filters = new List<Sandbox.ModAPI.Ingame.MyInventoryItemFilter>();
             sorter.GetFilterList(filters);
@@ -158,9 +194,7 @@ namespace GasSorter
             {
                 var def = filters[i].ItemId;
                 var subtype = def.SubtypeName;
-
-                if (string.IsNullOrEmpty(subtype))
-                    continue;
+                if (string.IsNullOrEmpty(subtype)) continue;
 
                 if (subtype.IndexOf("Oxygen", StringComparison.OrdinalIgnoreCase) >= 0) hasO = true;
                 if (subtype.IndexOf("Hydrogen", StringComparison.OrdinalIgnoreCase) >= 0) hasH = true;
@@ -175,22 +209,18 @@ namespace GasSorter
         // Optional utility if you ever want neighbor descriptions again
         private static string DescribeNeighborBlock(IMySlimBlock slim)
         {
-            if (slim == null || slim.FatBlock == null)
-                return "none";
+            if (slim == null || slim.FatBlock == null) return "none";
 
             var block = slim.FatBlock;
 
-            if (block is Sandbox.ModAPI.IMyGasTank)
-                return "GasTank";
+            if (block is Sandbox.ModAPI.IMyGasTank) return "GasTank";
 
             MyDefinitionId defId = block.BlockDefinition;
             string subtype = defId.SubtypeName;
-            if (!string.IsNullOrWhiteSpace(subtype))
-                return subtype;
+            if (!string.IsNullOrWhiteSpace(subtype)) return subtype;
 
             string name = block.DefinitionDisplayNameText;
-            if (!string.IsNullOrWhiteSpace(name))
-                return name;
+            if (!string.IsNullOrWhiteSpace(name)) return name;
 
             return "other";
         }
