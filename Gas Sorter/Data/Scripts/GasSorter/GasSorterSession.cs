@@ -19,7 +19,8 @@ namespace GasSorter
         // Unique key inside CustomData so we don't stomp other mods/users
         private const string CustomDataKey = "[GasSorter]GasControl=";
 
-        private bool _initialized = false;
+        private bool _logicInitialized = false;
+        private bool _uiInitialized = false;
         private bool _controlsCreated = false;
 
         // Track which blocks we've hooked for custom info so we don't subscribe multiple times
@@ -30,32 +31,52 @@ namespace GasSorter
 
         public override void UpdateBeforeSimulation()
         {
-            // Run initialization once when the game systems are ready
-            if (!_initialized)
+            // Wait for session to exist on both client and server
+            if (MyAPIGateway.Session == null)
+                return;
+
+            // -------------------------
+            // SERVER: logic init + tick
+            // -------------------------
+            var isServer = MyAPIGateway.Multiplayer == null || MyAPIGateway.Multiplayer.IsServer;
+            if (isServer)
             {
-                if (MyAPIGateway.TerminalControls == null || MyAPIGateway.Session == null)
+                if (!_logicInitialized)
+                {
+                    _logicInitialized = true;
+                    // Do NOT call ShowMessage here (dedicated server has no GUI/chat UI).
+                    // Optional log:
+                    // MyLog.Default.WriteLineAndConsole("[GasSorter] Server logic initialized");
+                }
+
+                _logicTick++;
+                if (_logicTick % 30 == 0) // roughly every 0.5s at 60 FPS
+                    GasSorterGasLogic.RunGasControlScan(_logicTick);
+            }
+
+            // -------------------------
+            // CLIENT: UI init + refresh
+            // -------------------------
+            if (!_uiInitialized)
+            {
+                if (MyAPIGateway.Utilities != null && MyAPIGateway.Utilities.IsDedicated)
                     return;
 
-                _initialized = true;
+                if (MyAPIGateway.TerminalControls == null)
+                    return;
+
+                _uiInitialized = true;
 
                 // Debug: show a message in chat so we know this component actually ran
                 MyAPIGateway.Utilities.ShowMessage("GasSorter", "GasSorterSession initialized");
-                
+
                 MyAPIGateway.Utilities.MessageEntered += OnMessageEntered;
 
                 MyAPIGateway.TerminalControls.CustomControlGetter += TerminalControlGetter;
             }
 
-            if (MyAPIGateway.Session == null)
-                return;
-
-            // --- Call gas logic skeleton every ~30 ticks ---
-            _logicTick++;
-            if (_logicTick % 30 == 0) // roughly every 0.5s at 60 FPS
-            {
-                GasSorterGasLogic.RunGasControlScan(_logicTick);
-                UpdateLiveInfoRefresh();
-            }
+            // UI refresh only makes sense on a client
+            UpdateLiveInfoRefresh();
         }
 
 private void OnMessageEntered(string messageText, ref bool sendToOthers)
@@ -115,11 +136,11 @@ private void OnMessageEntered(string messageText, ref bool sendToOthers)
 
         protected override void UnloadData()
         {
-            if (MyAPIGateway.TerminalControls != null)
-            {
+            if (_uiInitialized && MyAPIGateway.Utilities != null)
                 MyAPIGateway.Utilities.MessageEntered -= OnMessageEntered;
+
+            if (_uiInitialized && MyAPIGateway.TerminalControls != null)
                 MyAPIGateway.TerminalControls.CustomControlGetter -= TerminalControlGetter;
-            }
 
             _infoHooked.Clear();
         }
