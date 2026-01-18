@@ -59,7 +59,11 @@ namespace GasSorter
             // -------------------------
             if (!_uiInitialized)
             {
+ codex/refactor-gassortersession-initialization-logic-ntywvi
+                if (MyAPIGateway.Utilities == null)
+
                 if (MyAPIGateway.Utilities != null && MyAPIGateway.Utilities.IsDedicated)
+ main
                     return;
 
                 if (MyAPIGateway.TerminalControls == null)
