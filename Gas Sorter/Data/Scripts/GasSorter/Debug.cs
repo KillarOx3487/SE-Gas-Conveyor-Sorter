@@ -1,6 +1,8 @@
 using Sandbox.ModAPI;
 using VRage.Game.ModAPI;
 using System;
+using System.Collections.Generic;
+using System.Text;
 using GasSorter.Shared.Backend;
 
 namespace GasSorter
@@ -8,64 +10,126 @@ namespace GasSorter
     /// <summary>
     /// Switchable debug output. No gameplay side effects.
     /// Enable/disable with: /gassorter debug on|off
+    ///
+    /// Behavior:
+    /// - When active, collects per-sorter lines into a buffer during a scan tick.
+    /// - At end of the scan, prints the whole buffer (chunked) and clears it.
     /// </summary>
     public sealed class GasSorterDebugModule : IGasSorterModule
     {
         public string Name => "Debug";
         public bool Enabled => GasSorterSession.DebugEnabled;
 
-        // Run this module occasionally to reduce spam.
-        // Your scan likely runs around every 30 ticks; this means print once every 300 ticks (~5 sec).
+        // Only do debug collection/printing occasionally
         public int TickInterval => 300;
 
-        // Aggregation across sorters per scan tick
-        private static int _lastTick = -1;
-        private static int _activeSortersThisTick = 0;
+        // ---- scan-batch state (server-side) ----
+        private static bool _scanActive = false;
+        private static int _scanTick = -1;
 
-        public void Apply(ref GasSorterModuleContext ctx)
+        // CSV lines for this scan
+        private static readonly List<string> _lines = new List<string>(128);
+
+        // Safety limits so chat doesn't explode
+        private const int MaxLinesPerFlush = 200;
+        private const int LinesPerChatMessage = 10;
+
+        /// <summary>Call once at the start of RunGasControlScan when debug should run.</summary>
+        public static void BeginScan(int logicTick)
         {
-            // Only print on server to avoid duplicate spam from clients
+            _scanActive = true;
+            _scanTick = logicTick;
+            _lines.Clear();
+
+            // Optional header (printed as first line)
+            _lines.Add("tick,sorter,filter,fwd,back");
+        }
+
+        /// <summary>Call once at the end of RunGasControlScan.</summary>
+        public static void EndScan()
+        {
+            if (!_scanActive)
+                return;
+
+            _scanActive = false;
+
+            // Only print on server to avoid duplicates
             if (MyAPIGateway.Multiplayer != null && !MyAPIGateway.Multiplayer.IsServer)
                 return;
 
-            int tick = ctx.LogicTick;
-
-            // Reset counters when tick changes (first sorter processed that tick)
-            if (_lastTick != tick)
-            {
-                _lastTick = tick;
-                _activeSortersThisTick = 0;
-            }
-
-            _activeSortersThisTick++;
-
-            // Throttle per-sorter details: only log a subset each print interval
-            // Use EntityId hash to pick ~1/8 of sorters per print to keep it readable
-            long id = ctx.Sorter?.EntityId ?? 0;
-            if ((id & 0x7) != 0) // 7 = mask for 1/8 selection
+            if (MyAPIGateway.Utilities == null)
                 return;
 
+            if (_lines.Count <= 1)
+            {
+                // header only => nothing captured
+                MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefixDbg, $"[{_scanTick}] (no active gas sorters)");
+                return;
+            }
+
+            int total = _lines.Count - 1; // minus header
+            int cappedTotal = total;
+
+            if (total > MaxLinesPerFlush)
+            {
+                cappedTotal = MaxLinesPerFlush;
+                // keep header + first MaxLinesPerFlush lines
+                _lines.RemoveRange(1 + MaxLinesPerFlush, _lines.Count - (1 + MaxLinesPerFlush));
+                _lines.Add($"[{_scanTick}],(truncated),lines={total},cap={MaxLinesPerFlush},,");
+            }
+
+            // Print in chunks to avoid chat truncation
+            int idx = 0;
+            while (idx < _lines.Count)
+            {
+                var sb = new StringBuilder(512);
+
+                int take = Math.Min(LinesPerChatMessage, _lines.Count - idx);
+                for (int i = 0; i < take; i++)
+                {
+                    sb.Append(_lines[idx + i]);
+                    if (i != take - 1)
+                        sb.Append(" | ");
+                }
+
+                MyAPIGateway.Utilities.ShowMessage(
+                    GSTags.ChatPrefixDbg,
+                    sb.ToString()
+                );
+
+                idx += take;
+            }
+
+            // Summary line
+            MyAPIGateway.Utilities.ShowMessage(
+                GSTags.ChatPrefixDbg,
+                $"[{_scanTick}] sorters={cappedTotal}" + (total != cappedTotal ? $" (truncated from {total})" : "")
+            );
+        }
+
+        public void Apply(ref GasSorterModuleContext ctx)
+        {
+            if (!_scanActive)
+                return;
+
+            // Don't collect if chat isn't available
+            if (MyAPIGateway.Utilities == null)
+                return;
+
+            // Build a CSV-ish line.
+            // Example:
+            // 300,'H2_2',Both,GasTank,GasTank
             string sorterName = ctx.Sorter?.CustomName;
             if (string.IsNullOrWhiteSpace(sorterName))
                 sorterName = ctx.Sorter?.DefinitionDisplayNameText ?? "Sorter";
 
+            // Quote sorter name (and escape embedded quotes)
+            sorterName = sorterName.Replace("'", "''");
+
             string fwd = Describe(ctx.ForwardSlim);
             string back = Describe(ctx.BackwardSlim);
 
-            MyAPIGateway.Utilities.ShowMessage(
-                GSTags.ChatPrefixDbg,
-                $"[{tick}] '{sorterName}' Filter={ctx.FilterMode} Fwd={fwd} Back={back}"
-            );
-
-            // Print a small summary once per interval (only from the selected subset's first call)
-            // We use the selection to avoid printing summary N times.
-            if ((id & 0xFF) == 0) // very rare "leader" condition
-            {
-                MyAPIGateway.Utilities.ShowMessage(
-                    GSTags.ChatPrefixDbg,
-                    $"[{tick}] Active gas sorters processed this tick: {_activeSortersThisTick}"
-                );
-            }
+            _lines.Add($"{ctx.LogicTick},'{sorterName}',{ctx.FilterMode},{fwd},{back}");
         }
 
         private static string Describe(IMySlimBlock slim)
@@ -74,10 +138,8 @@ namespace GasSorter
 
             var fat = slim.FatBlock;
 
-            // Most useful types first
             if (fat is Sandbox.ModAPI.IMyGasTank) return "GasTank";
 
-            // Generic fallback
             string name = fat.DefinitionDisplayNameText;
             if (!string.IsNullOrWhiteSpace(name)) return name;
 

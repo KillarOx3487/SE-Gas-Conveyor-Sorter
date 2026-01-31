@@ -57,11 +57,25 @@ namespace GasSorter
         /// </summary>
         public static void RunGasControlScan(int logicTick)
         {
+            bool doDebugBatch = false;
+
             try
             {
                 if (MyAPIGateway.Entities == null)
                     return;
 
+                // Start debug batch only when it would run (interval gating)
+                if (GasSorterSession.DebugEnabled)
+                {
+                    // Match the Debug module interval
+                    // (keeps debug overhead very low)
+                    if (logicTick % 300 == 0)
+                    {
+                        doDebugBatch = true;
+                        GasSorterDebugModule.BeginScan(logicTick);
+                    }
+                }
+        
                 _entityBuffer.Clear();
                 MyAPIGateway.Entities.GetEntities(_entityBuffer, e => e is IMyCubeGrid);
 
@@ -99,6 +113,11 @@ namespace GasSorter
                 // Keep the scan alive even if something unexpected happens.
                 if (MyAPIGateway.Utilities != null)
                     MyAPIGateway.Utilities.ShowMessage("GasSorter", $"Gas scan error: {e.Message}");
+            }
+            finally
+            {
+                if (doDebugBatch)
+                    GasSorterDebugModule.EndScan();
             }
         }
 
