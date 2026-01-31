@@ -1,6 +1,4 @@
-using Sandbox.ModAPI;
 using VRage.Game.ModAPI;
-using System;
 
 namespace GasSorter
 {
@@ -12,13 +10,11 @@ namespace GasSorter
     {
         public IMyConveyorSorter Sorter;
         public IMyCubeGrid Grid;
-
         public IMySlimBlock SorterSlim;
         public IMySlimBlock ForwardSlim;
         public IMySlimBlock BackwardSlim;
 
         public GasSorterGasLogic.GasFilterMode FilterMode;
-
         public int LogicTick;
     }
 
@@ -29,14 +25,11 @@ namespace GasSorter
     {
         string Name { get; }
 
-        /// <summary>
-        /// Set false to disable the module without removing code.
-        /// </summary>
+        /// <summary>Set false to disable the module without removing code.</summary>
         bool Enabled { get; }
 
         /// <summary>
-        /// 0 = run every dispatcher tick.
-        /// Otherwise runs when (LogicTick % TickInterval) == 0.
+        /// 0 = run every dispatcher tick. Otherwise runs when (LogicTick % TickInterval) == 0.
         /// </summary>
         int TickInterval { get; }
 

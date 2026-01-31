@@ -1,13 +1,13 @@
 using Sandbox.ModAPI;
 using VRage.Game.ModAPI;
-using VRageMath;
 using System;
+using GasSorter.Shared.Backend;
 
 namespace GasSorter
 {
     /// <summary>
     /// Switchable debug output. No gameplay side effects.
-    /// Enable/disable with /gassorter debug on|off
+    /// Enable/disable with: /gassorter debug on|off
     /// </summary>
     public sealed class GasSorterDebugModule : IGasSorterModule
     {
@@ -53,7 +53,7 @@ namespace GasSorter
             string back = Describe(ctx.BackwardSlim);
 
             MyAPIGateway.Utilities.ShowMessage(
-                "GasSorterDbg",
+                GSTags.ChatPrefixDbg,
                 $"[{tick}] '{sorterName}' Filter={ctx.FilterMode} Fwd={fwd} Back={back}"
             );
 
@@ -62,7 +62,7 @@ namespace GasSorter
             if ((id & 0xFF) == 0) // very rare "leader" condition
             {
                 MyAPIGateway.Utilities.ShowMessage(
-                    "GasSorterDbg",
+                    GSTags.ChatPrefixDbg,
                     $"[{tick}] Active gas sorters processed this tick: {_activeSortersThisTick}"
                 );
             }

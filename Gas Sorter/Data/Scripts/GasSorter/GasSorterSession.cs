@@ -3,11 +3,10 @@ using Sandbox.ModAPI.Interfaces.Terminal;
 using VRage.Game.Components;
 using VRage.Game.ModAPI;
 using VRage.Utils;
-using VRage.Game;
 using System;
 using System.Collections.Generic;
 using System.Text;
-
+using GasSorter.Shared.Backend;
 
 namespace GasSorter
 {
@@ -17,17 +16,24 @@ namespace GasSorter
         private int _infoRefreshTick = 0;
 
         // Unique key inside CustomData so we don't stomp other mods/users
-        private const string CustomDataKey = "[GasSorter]GasControl=";
+        private const string CustomDataKey = GSTags.CustomDataKey_GasControl;
 
         private bool _logicInitialized = false;
         private bool _uiInitialized = false;
         private bool _controlsCreated = false;
+
+        // Terminal UI ordering helpers (client-side)
+        private static bool _reorderedForSorterControls = false;
+        private static bool _dumpedSorterControls = false;
 
         // Track which blocks we've hooked for custom info so we don't subscribe multiple times
         private readonly HashSet<long> _infoHooked = new HashSet<long>();
 
         // Tick counter for throttling gas logic
         private int _logicTick = 0;
+
+        // --- Debug Switch ---
+        public static bool DebugEnabled { get; private set; } = false;
 
         public override void UpdateBeforeSimulation()
         {
@@ -38,7 +44,7 @@ namespace GasSorter
             // -------------------------
             // SERVER: logic init + tick
             // -------------------------
-            var isServer = MyAPIGateway.Multiplayer == null || MyAPIGateway.Multiplayer.IsServer;
+            bool isServer = (MyAPIGateway.Multiplayer == null) || MyAPIGateway.Multiplayer.IsServer;
             if (isServer)
             {
                 if (!_logicInitialized)
@@ -59,7 +65,10 @@ namespace GasSorter
             // -------------------------
             if (!_uiInitialized)
             {
-                if (MyAPIGateway.Utilities != null && MyAPIGateway.Utilities.IsDedicated)
+                if (MyAPIGateway.Utilities == null)
+                    return;
+
+                if (MyAPIGateway.Utilities.IsDedicated)
                     return;
 
                 if (MyAPIGateway.TerminalControls == null)
@@ -68,10 +77,9 @@ namespace GasSorter
                 _uiInitialized = true;
 
                 // Debug: show a message in chat so we know this component actually ran
-                MyAPIGateway.Utilities.ShowMessage("GasSorter", "GasSorterSession initialized");
+                MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "GasSorterSession initialized");
 
                 MyAPIGateway.Utilities.MessageEntered += OnMessageEntered;
-
                 MyAPIGateway.TerminalControls.CustomControlGetter += TerminalControlGetter;
             }
 
@@ -79,60 +87,63 @@ namespace GasSorter
             UpdateLiveInfoRefresh();
         }
 
-private void OnMessageEntered(string messageText, ref bool sendToOthers)
-{
-    if (string.IsNullOrWhiteSpace(messageText)) return;
-
-    // Only handle our commands
-    // Examples:
-    //  /gassorter debug on
-    //  /gassorter debug off
-    //  /gassorter debug
-    string msg = messageText.Trim();
-
-    if (!msg.StartsWith("/gassorter", StringComparison.OrdinalIgnoreCase))
-        return;
-
-    // Do not broadcast our command to chat
-    sendToOthers = false;
-
-    var parts = msg.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-    // parts[0] = /gassorter
-
-    if (parts.Length == 1)
-    {
-        MyAPIGateway.Utilities.ShowMessage("GasSorter", "Commands: /gassorter debug [on|off]");
-        return;
-    }
-
-    if (parts.Length >= 2 && parts[1].Equals("debug", StringComparison.OrdinalIgnoreCase))
-    {
-        if (parts.Length == 2)
+        private void OnMessageEntered(string messageText, ref bool sendToOthers)
         {
-            MyAPIGateway.Utilities.ShowMessage("GasSorter", $"Debug is {(DebugEnabled ? "ON" : "OFF")}. Use: /gassorter debug on|off");
-            return;
+            if (string.IsNullOrWhiteSpace(messageText))
+                return;
+
+            // Only handle our commands
+            // Examples:
+            //  /gassorter debug on
+            //  /gassorter debug off
+            //  /gassorter debug
+            string msg = messageText.Trim();
+
+            if (!msg.StartsWith(GSTags.ChatRoot, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            // Do not broadcast our command to chat
+            sendToOthers = false;
+
+            var parts = msg.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            // parts[0] = /gassorter
+
+            if (parts.Length == 1)
+            {
+                MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "Commands: /gassorter debug [on|off]");
+                return;
+            }
+
+            if (parts.Length >= 2 && parts[1].Equals(GSTags.CmdDebug, StringComparison.OrdinalIgnoreCase))
+            {
+                if (parts.Length == 2)
+                {
+                    MyAPIGateway.Utilities.ShowMessage(
+                        GSTags.ChatPrefix,
+                        $"Debug is {(DebugEnabled ? "ON" : "OFF")}. Use: /gassorter debug on|off");
+                    return;
+                }
+
+                if (parts[2].Equals("on", StringComparison.OrdinalIgnoreCase))
+                {
+                    DebugEnabled = true;
+                    MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "Debug ON");
+                    return;
+                }
+
+                if (parts[2].Equals("off", StringComparison.OrdinalIgnoreCase))
+                {
+                    DebugEnabled = false;
+                    MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "Debug OFF");
+                    return;
+                }
+
+                MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "Usage: /gassorter debug on|off");
+                return;
+            }
+
+            MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "Unknown command. Try: /gassorter debug on|off");
         }
-
-        if (parts[2].Equals("on", StringComparison.OrdinalIgnoreCase))
-        {
-            DebugEnabled = true;
-            MyAPIGateway.Utilities.ShowMessage("GasSorter", "Debug ON");
-            return;
-        }
-
-        if (parts[2].Equals("off", StringComparison.OrdinalIgnoreCase))
-        {
-            DebugEnabled = false;
-            MyAPIGateway.Utilities.ShowMessage("GasSorter", "Debug OFF");
-            return;
-        }
-
-        MyAPIGateway.Utilities.ShowMessage("GasSorter", "Usage: /gassorter debug on|off");
-        return;
-    }
-
-    MyAPIGateway.Utilities.ShowMessage("GasSorter", "Unknown command. Try: /gassorter debug on|off");
-}
 
         protected override void UnloadData()
         {
@@ -191,6 +202,85 @@ private void OnMessageEntered(string messageText, ref bool sendToOthers)
                 // Force info to regenerate after we attach the handler
                 block.RefreshCustomInfo();
             }
+
+            // Optional: dump control IDs once when debug is enabled (helps you lock onto exact Drain All ID)
+            if (DebugEnabled && !_dumpedSorterControls)
+            {
+                _dumpedSorterControls = true;
+                DumpSorterControlIdsOnce(controls);
+            }
+
+            // Try to reorder until it succeeds. The first time this runs, our control may not yet
+            // appear in the list (terminal builds list before AddControl takes effect).
+            if (!_reorderedForSorterControls)
+            {
+                _reorderedForSorterControls = MoveGasControlUnderDrainAll(controls);
+            }
+            else
+            {
+                // Keep it in the right spot in case another mod reorders later
+                MoveGasControlUnderDrainAll(controls);
+            }
+        }
+
+
+        private static void DumpSorterControlIdsOnce(List<IMyTerminalControl> controls)
+        {
+            if (controls == null) return;
+
+            // Keep it short: only show potential matches for "Drain" and our own control
+            for (int i = 0; i < controls.Count; i++)
+            {
+                var c = controls[i];
+                if (c == null || c.Id == null) continue;
+
+                if (c.Id.IndexOf("Drain", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    c.Id == "GasControlEnabled")
+                {
+                    MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefixDbg, $"CTRL[{i}]: {c.Id} ({c.GetType().Name})");
+                }
+            }
+        }
+
+        private static bool MoveGasControlUnderDrainAll(List<IMyTerminalControl> controls)
+        {
+            if (controls == null || controls.Count == 0)
+                return false;
+
+            // Find our control
+            int gasIdx = controls.FindIndex(c => c != null && c.Id == "GasControlEnabled");
+            if (gasIdx < 0)
+                return false;
+
+            // Find vanilla "Drain All" control. IDs vary across versions, so use heuristic.
+            // Drain All is typically a BUTTON, and its Id usually contains Drain + All.
+            int drainIdx = controls.FindIndex(c =>
+                c != null &&
+                c.Id != null &&
+                c.Id.IndexOf("Drain", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                c.Id.IndexOf("All", StringComparison.OrdinalIgnoreCase) >= 0);
+
+            if (drainIdx < 0)
+            {
+                // Fallback: just place near the top of the list, after a few vanilla controls
+                drainIdx = System.Math.Min(5, controls.Count - 1);
+            }
+
+            // If already directly after drainIdx, nothing to do
+            if (gasIdx == drainIdx + 1)
+                return true;
+
+            var gasCtrl = controls[gasIdx];
+            controls.RemoveAt(gasIdx);
+
+            // If we removed something before drainIdx, the drain index shifts left
+            if (gasIdx < drainIdx)
+                drainIdx--;
+
+            int insertAt = System.Math.Min(drainIdx + 1, controls.Count);
+            controls.Insert(insertAt, gasCtrl);
+
+            return true;
         }
 
         private void CreateGasControlCheckbox()
@@ -205,16 +295,19 @@ private void OnMessageEntered(string messageText, ref bool sendToOthers)
                 "When disabled, gas behaves like vanilla.");
 
             checkbox.Getter = block => GetGasControlEnabled(block);
-            checkbox.Setter = (block, value) => SetGasControlEnabled(block, value);
+            checkbox.Setter = (block, value) =>
+            {
+                SetGasControlEnabled(block, value);
 
+                // Immediate UI nudge
+                GSTags.ForceTerminalInfoRefresh(block);
+            };
             checkbox.SupportsMultipleBlocks = true;
             checkbox.Visible = block => true;
             checkbox.Enabled = block => true;
 
             MyAPIGateway.TerminalControls.AddControl<IMyConveyorSorter>(checkbox);
         }
-        // --- Debug Switch --- 
-        public static bool DebugEnabled { get; private set; } = false;
 
         // --- CustomData helpers for persistence ---
         public static bool GetGasControlEnabled(IMyTerminalBlock block)
@@ -274,59 +367,7 @@ private void OnMessageEntered(string messageText, ref bool sendToOthers)
             block.CustomData = sb.ToString();
 
             // Force info to refresh so player sees updated status
-            block.RefreshCustomInfo();
-        }
-
-        private enum GasFilterMode
-        {
-            None,
-            OxygenOnly,
-            HydrogenOnly,
-            Both
-        }
-
-        /// <summary>
-        /// Look at the sorter's item filter list and infer which gases
-        /// (if any) it is meant to control, based on your fake gas items.
-        /// This does NOT change any behavior, it's just for info text.
-        /// </summary>
-        private static GasFilterMode GetGasFilterMode(IMyConveyorSorter sorter)
-        {
-            if (sorter == null)
-                return GasFilterMode.None;
-
-            // Get the current filter list
-            var filters = new List<Sandbox.ModAPI.Ingame.MyInventoryItemFilter>();
-            sorter.GetFilterList(filters);
-
-            if (filters.Count == 0)
-                return GasFilterMode.None;
-
-            bool hasOxygen = false;
-            bool hasHydrogen = false;
-
-            foreach (var f in filters)
-            {
-                MyDefinitionId def = f.ItemId;
-                string subtype = def.SubtypeName;
-
-                if (string.IsNullOrEmpty(subtype))
-                    continue;
-
-                // These checks assume your fake ingots use names like
-                // "Oxygen Gas" and "Hydrogen Gas" (or at least contain
-                // "Oxygen" / "Hydrogen" in the subtype).
-                if (subtype.IndexOf("Oxygen", StringComparison.OrdinalIgnoreCase) >= 0)
-                    hasOxygen = true;
-
-                if (subtype.IndexOf("Hydrogen", StringComparison.OrdinalIgnoreCase) >= 0)
-                    hasHydrogen = true;
-            }
-
-            if (hasOxygen && hasHydrogen) return GasFilterMode.Both;
-            if (hasOxygen) return GasFilterMode.OxygenOnly;
-            if (hasHydrogen) return GasFilterMode.HydrogenOnly;
-            return GasFilterMode.None;
+            GSTags.ForceTerminalInfoRefresh(block);
         }
 
         // --- Custom info hook per block ---
@@ -344,33 +385,31 @@ private void OnMessageEntered(string messageText, ref bool sendToOthers)
             if (!enabled)
             {
                 sb.AppendLine("  Mode: Vanilla gas flow");
+                return;
             }
-            else
+
+            sb.AppendLine("  Mode: Directional valve");
+
+            // Show which gases this sorter is set up to handle, based on the fake gas items in its filter list.
+            var gasMode = GasSorterGasLogic.GetSorterGasFilterMode(sorter);
+            switch (gasMode)
             {
-                sb.AppendLine("  Mode: Directional valve");
-                
-               // Show which gases this sorter is set up to handle,
-               // based on the fake gas items in its filter list.
-               var gasMode = GetGasFilterMode(sorter);
-               switch (gasMode)
-              {
-                  case GasFilterMode.OxygenOnly:
-                      sb.AppendLine("  Gas Filter: Oxygen only");
-                      break;
+                case GasSorterGasLogic.GasFilterMode.OxygenOnly:
+                    sb.AppendLine("  Gas Filter: Oxygen only");
+                    break;
 
-                  case GasFilterMode.HydrogenOnly:
-                      sb.AppendLine("  Gas Filter: Hydrogen only");
-                      break;
+                case GasSorterGasLogic.GasFilterMode.HydrogenOnly:
+                    sb.AppendLine("  Gas Filter: Hydrogen only");
+                    break;
 
-                  case GasFilterMode.Both:
-                      sb.AppendLine("  Gas Filter: Oxygen + Hydrogen");
-                      break;
+                case GasSorterGasLogic.GasFilterMode.Both:
+                    sb.AppendLine("  Gas Filter: Oxygen + Hydrogen");
+                    break;
 
-                  case GasFilterMode.None:
-                  default:
-                      sb.AppendLine("  Gas Filter: (none / items only)");
-                      break;
-              }
+                case GasSorterGasLogic.GasFilterMode.None:
+                default:
+                    sb.AppendLine("  Gas Filter: (none / items only)");
+                    break;
             }
         }
     }

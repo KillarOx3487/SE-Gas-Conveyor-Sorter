@@ -30,6 +30,9 @@ namespace GasSorter
             if (MyAPIGateway.Multiplayer != null && !MyAPIGateway.Multiplayer.IsServer)
                 return;
 
+            if (sorter == null)
+                return;
+
             // Respect sorter ON/OFF
             if (!sorter.Enabled)
                 return;
@@ -55,12 +58,14 @@ namespace GasSorter
 
                 if (filterMode == GasSorterGasLogic.GasFilterMode.OxygenOnly)
                 {
-                    if (fType != GasSorterGasLogic.TankGasType.Oxygen || bType != GasSorterGasLogic.TankGasType.Oxygen)
+                    if (fType != GasSorterGasLogic.TankGasType.Oxygen ||
+                        bType != GasSorterGasLogic.TankGasType.Oxygen)
                         return;
                 }
                 else if (filterMode == GasSorterGasLogic.GasFilterMode.HydrogenOnly)
                 {
-                    if (fType != GasSorterGasLogic.TankGasType.Hydrogen || bType != GasSorterGasLogic.TankGasType.Hydrogen)
+                    if (fType != GasSorterGasLogic.TankGasType.Hydrogen ||
+                        bType != GasSorterGasLogic.TankGasType.Hydrogen)
                         return;
                 }
             }
@@ -76,18 +81,13 @@ namespace GasSorter
             double backRatio = tankBack.FilledRatio;
             double fwdRatio = tankFwd.FilledRatio;
 
-            if (backRatio <= 0.0000001)
-                return;
-
-            if (fwdRatio >= 0.999999)
-                return;
+            if (backRatio <= 0.0000001) return;
+            if (fwdRatio >= 0.999999) return;
 
             double move = amt;
             if (move > backRatio) move = backRatio;
             if (move > (0.999999 - fwdRatio)) move = (0.999999 - fwdRatio);
-
-            if (move <= 0)
-                return;
+            if (move <= 0) return;
 
             tankBack.ChangeFilledRatio(-move, true);
             tankFwd.ChangeFilledRatio(move, true);
