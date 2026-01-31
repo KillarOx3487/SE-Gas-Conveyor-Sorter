@@ -1,0 +1,43 @@
+      GitHub Raw Code Links
+
+https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/GasSorterSession.cs
+https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/LogicModules.cs
+https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/GasLogic.cs
+https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/TankLogic.cs
+https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/Debug.cs
+https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/Shared/Backend/GSTags.cs
+
+
+      File Structure
+
+:\
+│   ├─ Gas Sorter\
+│   │   │
+│   │   ├─  Data\
+│   │   │   │
+│   │   ├   ├─ BlueprintClasses.sbc
+│   │   ├   ├─ CubeBlocks_Logistics.sbc
+│   │   ├   ├─ PhysicalItems.sbc
+│   │   ├   ├─ Scripts\
+│   │   │   │   │
+│   │   │   │   ├─ GasSorter\
+│   │   │   │   │   │
+│   │   │   │   │   ├─ GasSorterSession.cs
+│   │   │   │   │   ├─ LogicModules.cs
+│   │   │   │   │   ├─ GasLogic.cs
+│   │   │   │   │   ├─ TankLogic.cs
+│   │   │   │   │   ├─ Debug.cs
+│   │   │   │   │   ├─ shared\
+│   │   │   │   │   │   │
+│   │   │   │   │   │   ├─ backend\
+│   │   │   │   │   │   │   │
+│   │   │   │   │   │   │   ├─ GSTags.cs
+│   │   │   │   │   │   │   │
+│   │   │   │   │   │   │   └─ ...
+│   │   │   │   │   │   └─ ...
+│   │   │   │   │   └─ ...
+│   │   │   │   └─ ...
+│   │   │   └─ ...
+│   │   └─ ...
+│   └─ ...
+└─ ...
