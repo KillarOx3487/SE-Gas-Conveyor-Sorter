@@ -60,6 +60,13 @@ namespace GasSorter
 
             _scanActive = false;
 
+            // Rolling CSV output (only when explicitly enabled)
+            if (GasSorterSession.DebugLogEnabled)
+            {
+            AppendScanToRolling();
+            WriteRollingCsv();
+            }
+
             // Only print on server to avoid duplicates
             if (MyAPIGateway.Multiplayer != null && !MyAPIGateway.Multiplayer.IsServer)
                 return;
