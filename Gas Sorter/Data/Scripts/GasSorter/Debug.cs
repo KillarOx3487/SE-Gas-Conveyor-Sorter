@@ -34,13 +34,12 @@ namespace GasSorter
         private const int MaxLinesPerFlush = 200;
         private const int LinesPerChatMessage = 10;
 
+        // ---- rolling log (written only when DebugLogEnabled is true) ----
+        private const string RollingFileName = "GasSorterDebug_Rolling.csv";
+        private const int RollingMaxLines = 5000;
+        private static bool _rollingInit = false;
+        private static readonly List<string> _rolling = new List<string>(RollingMaxLines + 32);
 
-// ---- rolling log (written only when DebugLogEnabled is true) ----
-private const string RollingFileName = "GasSorterDebug_Rolling.csv";
-private const int RollingMaxLines = 5000;
-
-// Holds header + newest lines
-private static readonly List<string> _rolling = new List<string>(RollingMaxLines + 32);
 
         /// <summary>Call once at the start of RunGasControlScan when debug should run.</summary>
         public static void BeginScan(int logicTick)
@@ -115,22 +114,63 @@ private static readonly List<string> _rolling = new List<string>(RollingMaxLines
             );
         }
 
+        
+        /// <summary>
+        /// Ensure the rolling CSV file exists immediately (creates header + writes current buffer).
+        /// Safe to call from chat command handlers.
+        /// </summary>
+        public static void EnsureRollingLogFile()
+        {
+            if (MyAPIGateway.Utilities == null)
+                return;
 
-private static void WriteRollingCsv()
-{
-    if (MyAPIGateway.Utilities == null)
-        return;
+            if (!_rollingInit)
+            {
+                _rollingInit = true;
+                _rolling.Clear();
+                _rolling.Add("tick,sorter,filter,fwd,back");
+            }
 
-    using (var writer = MyAPIGateway.Utilities.WriteFileInLocalStorage(RollingFileName, typeof(GasSorterDebugModule)))
-    {
-        for (int i = 0; i < _rolling.Count; i++)
-            writer.WriteLine(_rolling[i]);
-    }
-}
+            WriteRollingCsv();
+        }
+
+        private static void AppendScanToRolling()
+        {
+            if (!_rollingInit)
+            {
+                _rollingInit = true;
+                _rolling.Clear();
+                _rolling.Add("tick,sorter,filter,fwd,back");
+            }
+
+            // Skip header at index 0 in _lines, append captured lines
+            for (int i = 1; i < _lines.Count; i++)
+                _rolling.Add(_lines[i]);
+
+            // Trim to last RollingMaxLines (keep header)
+            int maxTotal = RollingMaxLines + 1;
+            if (_rolling.Count > maxTotal)
+            {
+                int remove = _rolling.Count - maxTotal;
+                // never remove header
+                _rolling.RemoveRange(1, remove);
+            }
+        }
+
+        private static void WriteRollingCsv()
+        {
+            if (MyAPIGateway.Utilities == null)
+                return;
+
+            using (var writer = MyAPIGateway.Utilities.WriteFileInLocalStorage(RollingFileName, typeof(GasSorterSession)))
+            {
+                for (int i = 0; i < _rolling.Count; i++)
+                    writer.WriteLine(_rolling[i]);
+            }
+        }
 
 public void Apply(ref GasSorterModuleContext ctx)
-{
-
+        {
             if (!_scanActive)
                 return;
 
