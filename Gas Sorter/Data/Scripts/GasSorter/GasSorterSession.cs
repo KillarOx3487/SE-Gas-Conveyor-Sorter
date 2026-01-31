@@ -29,6 +29,9 @@ namespace GasSorter
         // Track which blocks we've hooked for custom info so we don't subscribe multiple times
         private readonly HashSet<long> _infoHooked = new HashSet<long>();
 
+        // Track sorter filter changes so we refresh the info pane only when something actually changed
+        private readonly Dictionary<long, int> _lastFilterHashBySorter = new Dictionary<long, int>();
+
         // Tick counter for throttling gas logic
         private int _logicTick = 0;
 
@@ -154,7 +157,32 @@ namespace GasSorter
                 MyAPIGateway.TerminalControls.CustomControlGetter -= TerminalControlGetter;
 
             _infoHooked.Clear();
+            _lastFilterHashBySorter.Clear();
         }
+
+
+private static int ComputeSorterFilterHash(IMyConveyorSorter sorter)
+{
+    if (sorter == null) return 0;
+
+    var filters = new List<Sandbox.ModAPI.Ingame.MyInventoryItemFilter>();
+    sorter.GetFilterList(filters);
+
+    unchecked
+    {
+        int h = 17;
+        h = (h * 31) + filters.Count;
+
+        for (int i = 0; i < filters.Count; i++)
+        {
+            var id = filters[i].ItemId; // MyDefinitionId
+            h = (h * 31) + id.TypeId.GetHashCode();
+            h = (h * 31) + (id.SubtypeName != null ? id.SubtypeName.GetHashCode() : 0);
+        }
+
+        return h;
+    }
+}
 
         private void UpdateLiveInfoRefresh()
         {
@@ -171,12 +199,32 @@ namespace GasSorter
                 return;
 
             // Refresh info for all gas-sorters we hooked
-            foreach (var id in _infoHooked)
-            {
-                var ent = MyAPIGateway.Entities.GetEntityById(id) as IMyTerminalBlock;
-                if (ent != null)
-                    ent.RefreshCustomInfo();
-            }
+            
+foreach (var id in _infoHooked)
+{
+    var ent = MyAPIGateway.Entities.GetEntityById(id) as IMyTerminalBlock;
+    if (ent == null)
+        continue;
+
+    // If this is a sorter, refresh only when its filter list changes.
+    var sorter = ent as IMyConveyorSorter;
+    if (sorter != null)
+    {
+        int newHash = ComputeSorterFilterHash(sorter);
+
+        int oldHash;
+        if (!_lastFilterHashBySorter.TryGetValue(id, out oldHash) || oldHash != newHash)
+        {
+            _lastFilterHashBySorter[id] = newHash;
+            GSTags.ForceTerminalInfoRefresh(ent);
+        }
+
+        continue;
+    }
+
+    // Fallback (shouldn't happen here)
+    GSTags.ForceTerminalInfoRefresh(ent);
+}
         }
 
         private void TerminalControlGetter(IMyTerminalBlock block, List<IMyTerminalControl> controls)
