@@ -37,6 +37,7 @@ namespace GasSorter
 
         // --- Debug Switch ---
         public static bool DebugEnabled { get; private set; } = false;
+        public static bool DebugLogEnabled { get; private set; } = false;
 
         public override void UpdateBeforeSimulation()
         {
@@ -97,9 +98,10 @@ namespace GasSorter
 
             // Only handle our commands
             // Examples:
+            //  /gassorter debug
             //  /gassorter debug on
             //  /gassorter debug off
-            //  /gassorter debug
+            //  /gassorter debuglog on on   (turns Debug ON then DebugLog ON)
             string msg = messageText.Trim();
 
             if (!msg.StartsWith(GSTags.ChatRoot, StringComparison.OrdinalIgnoreCase))
@@ -145,7 +147,54 @@ namespace GasSorter
                 return;
             }
 
-            MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "Unknown command. Try: /gassorter debug on|off");
+            if (parts.Length >= 2 && parts[1].Equals(GSTags.CmdDebugLog, StringComparison.OrdinalIgnoreCase))
+            {
+                if (parts.Length == 2)
+                {
+                    MyAPIGateway.Utilities.ShowMessage(
+                        GSTags.ChatPrefix,
+                        $"DebugLog is {(DebugLogEnabled ? "ON" : "OFF")}. Use: /gassorter debuglog on|off [on]");
+                    return;
+                }
+
+                bool wantOn = parts[2].Equals("on", StringComparison.OrdinalIgnoreCase);
+                bool wantOff = parts[2].Equals("off", StringComparison.OrdinalIgnoreCase);
+
+                if (!wantOn && !wantOff)
+                {
+                    MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "Usage: /gassorter debuglog on|off [on]");
+                    return;
+                }
+
+                if (wantOn)
+                {
+                    // Optional compound: "on on" means enable debug, then log
+                    if (!DebugEnabled)
+                    {
+                        if (parts.Length >= 4 && parts[3].Equals("on", StringComparison.OrdinalIgnoreCase))
+                        {
+                            DebugEnabled = true;
+                            MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "Debug ON");
+                        }
+                        else
+                        {
+                            MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "Enable debug first: /gassorter debug on");
+                            return;
+                        }
+                    }
+
+                    DebugLogEnabled = true;
+                    MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "DebugLog ON");
+                    return;
+                }
+
+                // wantOff
+                DebugLogEnabled = false;
+                MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "DebugLog OFF");
+                return;
+            }
+
+            MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "Unknown command. Try: '/gassorter' for Help");
         }
 
         protected override void UnloadData()

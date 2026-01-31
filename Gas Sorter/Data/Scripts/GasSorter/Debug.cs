@@ -34,6 +34,14 @@ namespace GasSorter
         private const int MaxLinesPerFlush = 200;
         private const int LinesPerChatMessage = 10;
 
+
+// ---- rolling log (written only when DebugLogEnabled is true) ----
+private const string RollingFileName = "GasSorterDebug_Rolling.csv";
+private const int RollingMaxLines = 5000;
+
+// Holds header + newest lines
+private static readonly List<string> _rolling = new List<string>(RollingMaxLines + 32);
+
         /// <summary>Call once at the start of RunGasControlScan when debug should run.</summary>
         public static void BeginScan(int logicTick)
         {
@@ -107,8 +115,22 @@ namespace GasSorter
             );
         }
 
-        public void Apply(ref GasSorterModuleContext ctx)
-        {
+
+private static void WriteRollingCsv()
+{
+    if (MyAPIGateway.Utilities == null)
+        return;
+
+    using (var writer = MyAPIGateway.Utilities.WriteFileInLocalStorage(RollingFileName, typeof(GasSorterDebugModule)))
+    {
+        for (int i = 0; i < _rolling.Count; i++)
+            writer.WriteLine(_rolling[i]);
+    }
+}
+
+public void Apply(ref GasSorterModuleContext ctx)
+{
+
             if (!_scanActive)
                 return;
 

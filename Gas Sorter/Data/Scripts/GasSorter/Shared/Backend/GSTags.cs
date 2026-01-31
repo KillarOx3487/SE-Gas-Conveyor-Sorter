@@ -12,6 +12,7 @@ namespace GasSorter.Shared.Backend
         // Chat commands
         internal const string ChatRoot = "/gassorter";
         internal const string CmdDebug = "debug";
+        internal const string CmdDebugLog = "debuglog";
 
         // CustomData keys
         internal const string CustomDataKey_GasControl = "[GasSorter]GasControl=";
