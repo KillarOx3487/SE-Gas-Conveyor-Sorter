@@ -7,6 +7,8 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using GasSorter.Shared.Backend;
+using GasSorter.Shared;
+using GasSorter.Modules;
 
 namespace GasSorter
 {

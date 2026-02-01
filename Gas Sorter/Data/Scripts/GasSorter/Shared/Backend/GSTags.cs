@@ -1,5 +1,6 @@
 using VRage.Game.ModAPI;
 using System;
+using GasSorter.Modules;
 
 namespace GasSorter.Shared.Backend
 {

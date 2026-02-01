@@ -1,6 +1,7 @@
 using VRage.Game.ModAPI;
+using GasSorter.Modules;
 
-namespace GasSorter
+namespace GasSorter.Shared
 {
     /// <summary>
     /// Shared context passed to every module.

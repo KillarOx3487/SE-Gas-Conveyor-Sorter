@@ -5,8 +5,10 @@ using VRage.ModAPI;
 using VRageMath;
 using System;
 using System.Collections.Generic;
+using GasSorter.Shared;
+using GasSorter.Modules;
 
-namespace GasSorter
+namespace GasSorter.Modules
 {
     /// <summary>
     /// Orchestrator: finds active gas-control sorters, identifies neighbors,

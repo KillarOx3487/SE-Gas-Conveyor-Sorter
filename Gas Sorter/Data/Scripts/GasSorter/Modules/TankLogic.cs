@@ -3,8 +3,10 @@ using VRage.Game.ModAPI;
 using System;
 using System.Collections.Generic;
 using VRage.Game;
+using GasSorter.Shared;
+using GasSorter.Modules;
 
-namespace GasSorter
+namespace GasSorter.Modules
 {
     /// <summary>
     /// Tank module: stable tank-to-tank directional transfer only.
