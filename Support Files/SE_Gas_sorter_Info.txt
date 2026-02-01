@@ -1,10 +1,10 @@
       GitHub Raw Code Links
 
 https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/GasSorterSession.cs
-https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/LogicModules.cs
-https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/GasLogic.cs
-https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/TankLogic.cs
 https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/Debug.cs
+https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/Shared/LogicModules.cs
+https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/Modules/GasLogic.cs
+https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/Modules/TankLogic.cs
 https://raw.githubusercontent.com/KillarOx3487/SE-Gas-Conveyor-Sorter/refs/heads/main/Gas%20Sorter/Data/Scripts/GasSorter/Shared/Backend/GSTags.cs
 
 
