@@ -187,7 +187,7 @@ namespace GasSorter
 
                     DebugLogEnabled = true;
                     GasSorterDebugModule.EnsureRollingLogFile();
-                    MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "DebugLog ON (writing GasSorterDebug_Rolling.csv)");
+                    MyAPIGateway.Utilities.ShowMessage(GSTags.ChatPrefix, "DebugLog ON (writing GasSorterDebug_Rolling.jsonl)");
                     return;
                 }
 

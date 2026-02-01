@@ -39,8 +39,13 @@ namespace GasSorter
     private const int MaxLinesPerFlush = 200;
     private const int LinesPerChatMessage = 10;
 
+        // Raw log format is code-only (no chat command). Switch here if desired.
+        private enum RawLogFormat { Jsonl = 1, KeyValue = 2 }
+        private const RawLogFormat RawLogFormatMode = RawLogFormat.Jsonl;
+
+
     // ---- rolling log (written only when DebugLogEnabled is true) ----
-    private const string RollingFileName = "GasSorterDebug_Rolling.csv";
+    private const string RollingFileName = "GasSorterDebug_Rolling.jsonl";
     private const int RollingMaxLines = 5000;
     private static bool _rollingInit = false;
     private static readonly List<string> _rolling = new List<string>(RollingMaxLines + 32);
@@ -50,7 +55,8 @@ namespace GasSorter
     {
       _scanActive = true;
       _scanTick = logicTick;
-      _lines.Clear();
+      _allLines.Clear();
+            _lines.Clear();
 
       // Optional header (printed as first line)
       _lines.Add("tick,sorter,filter,fwd,back");
@@ -68,7 +74,7 @@ namespace GasSorter
       if (GasSorterSession.DebugLogEnabled)
       {
         AppendScanToRolling();
-        WriteRollingCsv();
+        WriteRollingRaw();
       }
 
       // Only print on server to avoid duplicates
@@ -138,10 +144,8 @@ namespace GasSorter
       {
         _rollingInit = true;
         _rolling.Clear();
-        _rolling.Add("tick,sorter,filter,fwd,back");
-      }
-
-      WriteRollingCsv();
+        }
+            WriteRollingRaw();
     }
 
     private static void AppendScanToRolling()
@@ -153,21 +157,18 @@ namespace GasSorter
         _rolling.Add("tick,sorter,filter,fwd,back");
       }
 
-      // Skip header at index 0 in _lines, append captured lines
-      for (int i = 1; i < _lines.Count; i++)
-      _rolling.Add(_lines[i]);
+      // Append raw lines captured this scan
+            for (int i = 0; i < _allLines.Count; i++)
+                _rolling.Add(_allLines[i]);
 
       // Trim to last RollingMaxLines (keep header)
-      int maxTotal = RollingMaxLines + 1;
-      if (_rolling.Count > maxTotal)
-      {
-        int remove = _rolling.Count - maxTotal;
-        // never remove header
-        _rolling.RemoveRange(1, remove);
-      }
+      if (_rolling.Count > RollingMaxLines) {
+                int remove = _rolling.Count - RollingMaxLines;
+                _rolling.RemoveRange(0, remove);
+            }
     }
 
-    private static void WriteRollingCsv()
+    private static void WriteRollingRaw()
     {
       if (MyAPIGateway.Utilities == null)
         return;
@@ -202,9 +203,137 @@ namespace GasSorter
       string back = Describe(ctx.BackwardSlim);
 
       _lines.Add($"{ctx.LogicTick},'{sorterName}',{ctx.FilterMode},{fwd},{back}");
+
+            // Raw log line (JSONL or key=value)
+            _allLines.Add(FormatRawLine(ref ctx, sorterName, fwd, back));
     }
 
-    private static string Describe(IMySlimBlock slim)
+    
+        private static string FormatRawLine(ref GasSorterModuleContext ctx, string sorterNameEscapedForCsvChat, string fwdDesc, string backDesc)
+        {
+            // sorterNameEscapedForCsvChat uses doubled single quotes for CSV chat; convert back
+            string sorterName = sorterNameEscapedForCsvChat?.Replace("''", "'");
+
+            var sorter = ctx.Sorter;
+            long sorterId = sorter != null ? sorter.EntityId : 0;
+
+            long gridId = 0;
+            string gridName = null;
+            if (sorter != null && sorter.CubeGrid != null)
+            {
+                gridId = sorter.CubeGrid.EntityId;
+                gridName = sorter.CubeGrid.CustomName;
+            }
+
+            // Forward block
+            long fwdId = 0;
+            string fwdType = null;
+            string fwdDef = null;
+            if (ctx.ForwardSlim != null && ctx.ForwardSlim.FatBlock != null)
+            {
+                var fb = ctx.ForwardSlim.FatBlock;
+                fwdId = fb.EntityId;
+                fwdType = fb.GetType().FullName;
+                fwdDef = fb.BlockDefinition.ToString();
+            }
+
+            // Backward block
+            long backId = 0;
+            string backType = null;
+            string backDef = null;
+            if (ctx.BackwardSlim != null && ctx.BackwardSlim.FatBlock != null)
+            {
+                var bb = ctx.BackwardSlim.FatBlock;
+                backId = bb.EntityId;
+                backType = bb.GetType().FullName;
+                backDef = bb.BlockDefinition.ToString();
+            }
+
+            if (RawLogFormatMode == RawLogFormat.KeyValue)
+            {
+                // Code-only alternate format (former "3"): key=value pairs
+                var sb = new StringBuilder(256);
+                sb.Append("tick=").Append(ctx.LogicTick);
+                sb.Append("|sorterId=").Append(sorterId);
+                sb.Append("|sorterName=").Append(sorterName ?? "");
+                sb.Append("|gridId=").Append(gridId);
+                sb.Append("|gridName=").Append(gridName ?? "");
+                sb.Append("|filterMode=").Append((int)ctx.FilterMode);
+                sb.Append("|filterName=").Append(ctx.FilterMode.ToString());
+                sb.Append("|fwdDesc=").Append(fwdDesc ?? "");
+                sb.Append("|fwdId=").Append(fwdId);
+                sb.Append("|fwdType=").Append(fwdType ?? "");
+                sb.Append("|fwdDef=").Append(fwdDef ?? "");
+                sb.Append("|backDesc=").Append(backDesc ?? "");
+                sb.Append("|backId=").Append(backId);
+                sb.Append("|backType=").Append(backType ?? "");
+                sb.Append("|backDef=").Append(backDef ?? "");
+                return sb.ToString();
+            }
+            else
+            {
+                // JSONL (one JSON object per line)
+                var sb = new StringBuilder(384);
+                sb.Append('{');
+                AppendJson(sb, "tick", ctx.LogicTick); sb.Append(',');
+                AppendJson(sb, "sorterId", sorterId); sb.Append(',');
+                AppendJson(sb, "sorterName", sorterName); sb.Append(',');
+                AppendJson(sb, "gridId", gridId); sb.Append(',');
+                AppendJson(sb, "gridName", gridName); sb.Append(',');
+                AppendJson(sb, "filterMode", (int)ctx.FilterMode); sb.Append(',');
+                AppendJson(sb, "filterName", ctx.FilterMode.ToString()); sb.Append(',');
+                AppendJson(sb, "fwdDesc", fwdDesc); sb.Append(',');
+                AppendJson(sb, "fwdId", fwdId); sb.Append(',');
+                AppendJson(sb, "fwdType", fwdType); sb.Append(',');
+                AppendJson(sb, "fwdDef", fwdDef); sb.Append(',');
+                AppendJson(sb, "backDesc", backDesc); sb.Append(',');
+                AppendJson(sb, "backId", backId); sb.Append(',');
+                AppendJson(sb, "backType", backType); sb.Append(',');
+                AppendJson(sb, "backDef", backDef);
+                sb.Append('}');
+                return sb.ToString();
+            }
+        }
+
+        private static void AppendJson(StringBuilder sb, string key, int value)
+        {
+            sb.Append('"'); EscapeJsonInto(sb, key); sb.Append("\":").Append(value);
+        }
+
+        private static void AppendJson(StringBuilder sb, string key, long value)
+        {
+            sb.Append('"'); EscapeJsonInto(sb, key); sb.Append("\":").Append(value);
+        }
+
+        private static void AppendJson(StringBuilder sb, string key, string value)
+        {
+            sb.Append('"'); EscapeJsonInto(sb, key); sb.Append("\":");
+            if (value == null) { sb.Append("null"); return; }
+            sb.Append('"'); EscapeJsonInto(sb, value); sb.Append('"');
+        }
+
+        private static void EscapeJsonInto(StringBuilder sb, string s)
+        {
+            if (s == null) return;
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                switch (c)
+                {
+                    case '\\': sb.Append("\\\\"); break;
+                    case '"': sb.Append("\\\""); break;
+                    case '\n': sb.Append("\\n"); break;
+                    case '\r': sb.Append("\\r"); break;
+                    case '\t': sb.Append("\\t"); break;
+                    default:
+                        if (c < 32) sb.Append(' ');
+                        else sb.Append(c);
+                        break;
+                }
+            }
+        }
+
+private static string Describe(IMySlimBlock slim)
     {
       if (slim == null || slim.FatBlock == null) return "none";
       var fat = slim.FatBlock;
